@@ -6,6 +6,7 @@ from glob import glob
 import numpy as np
 from PIL import Image
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+import matplotlib.pyplot as plt
 
 try:
     from tqdm import tqdm, trange
@@ -69,6 +70,7 @@ class IPR():
         assert self.manifold_ref is not None, "call IPR.compute_manifold_ref() first"
 
         manifold_subject = self.compute_manifold(subject)
+        self.manifold_subject = manifold_subject
         precision = compute_metric(self.manifold_ref, manifold_subject.features, 'computing precision...')
         recall = compute_metric(manifold_subject, self.manifold_ref.features, 'computing recall...')
         return PrecisionAndRecall(precision, recall)
@@ -320,7 +322,7 @@ class ImageFolderMNIST(Dataset):
 
     def __getitem__(self, index):
         image_path = self.fnames[index]
-        image = Image.open(image_path).convert('L')
+        image = Image.open(image_path).convert('L')        
         if self.transform is not None:
             image = self.transform(image)
         return image

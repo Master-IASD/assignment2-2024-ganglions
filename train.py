@@ -25,9 +25,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train Normalizing Flow.')
     parser.add_argument("--epochs", type=int, default=200,
                         help="Number of epochs for training.")
-    parser.add_argument("--lr", type=float, default=5e-5,
+    parser.add_argument("--lr", type=float, default=1e-5,
                       help="The learning rate to use for training.")
-    parser.add_argument("--batch_size", type=int, default=64,
+    parser.add_argument("--batch_size", type=int, default=128,
                         help="Size of mini-batches for SGD")
     parser.add_argument("--n_samples", type=int, default=5000)
     parser.add_argument("--save_metrics", type=bool, default=False)
@@ -83,12 +83,12 @@ if __name__ == '__main__':
     criterion = nn.BCELoss()
 
     # define optimizers
-    #if args.WGAN :
-    #    G_optimizer = optim.RMSprop(G.parameters(), lr = 3*args.lr)
-    #    D_optimizer = optim.RMSprop(D.parameters(), lr = args.lr)
-    #else :
-    G_optimizer = optim.Adam(G.parameters(), lr = args.lr)
-    D_optimizer = optim.Adam(D.parameters(), lr = args.lr)
+    if args.WGAN :
+        G_optimizer = optim.RMSprop(G.parameters(), lr = args.lr)
+        D_optimizer = optim.RMSprop(D.parameters(), lr = args.lr)
+    else :
+        G_optimizer = optim.Adam(G.parameters(), lr = args.lr)
+        D_optimizer = optim.Adam(D.parameters(), lr = args.lr)
 
     print('Start Training :')
 
@@ -105,7 +105,7 @@ if __name__ == '__main__':
         for batch_idx, (x, _) in enumerate(train_loader):
             x = x.view(-1, mnist_dim)
             if args.WGAN :
-                d_loss_batch, d_rea_loss_batch, d_fake_loss_batch,d_acc_real_batch,d_acc_fake_batch = DW_train(x, G, D, D_optimizer,n_critic=7)
+                d_loss_batch, d_rea_loss_batch, d_fake_loss_batch,d_acc_real_batch,d_acc_fake_batch = DW_train(x, G, D, D_optimizer,weight_clip=0.005,n_critic=5)
             else :
                 d_loss_batch, d_rea_loss_batch, d_fake_loss_batch,d_acc_real_batch,d_acc_fake_batch = D_train(x, G, D, D_optimizer, criterion)
             d_loss += d_loss_batch

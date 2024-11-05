@@ -6,6 +6,9 @@ from improved_precision_recall import IPR
 from model import Generator
 from utils import load_model
 from torchvision import datasets, transforms
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+
 
 class TestingPipeline:
     def __init__(self, model, device,embedding='vgg16'):
@@ -64,8 +67,8 @@ class TestingPipeline:
         print('Start Computing Metrics')
         ipr = IPR(device = self.device, k = 2, batch_size= batch_size, num_samples = 10000,encoding=self.embedding)
         ipr.compute_manifold_ref(self.path_real)
-        images = images.reshape(-1, 28, 28).unsqueeze(1).repeat(1, 3, 1, 1)
-        print(images.shape)
+        #images = images.reshape(-1, 28, 28).unsqueeze(1).repeat(1, 3, 1, 1)
+        #print(images.shape)
         metric = ipr.precision_and_recall(self.path_real + '/../fake_samples')
         print('precision =', metric.precision)
         print('recall =', metric.recall)
@@ -77,10 +80,11 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default=torch.device('cuda'))
     parser.add_argument('--model_type', type=str, default='vanilla_gan')
     parser.add_argument('--mnist_dim', type=int, default=784)
+    parser.add_argument('--embedding', type=str, default='vgg16')
     args = parser.parse_args()
     device = args.device
     if args.model_type == 'vanilla_gan':
         model = Generator(g_output_dim= args.mnist_dim)
     model = load_model(model, args.model_path)
-    pipeline = TestingPipeline(model, device,'image')
+    pipeline = TestingPipeline(model, device,args.embedding)
     pipeline.compute_metrics(args.batch_size)
