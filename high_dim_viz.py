@@ -161,18 +161,19 @@ if __name__ == '__main__':
     test_dataset = datasets.MNIST(root='data/MNIST/', train=False, transform=transform, download=False)
 
     if args.data == 'original':
-
-        X = train_dataset.data[:10000]#.reshape((-1,28*28))[:10000]
+        X = transforms.Normalize(mean=(0.5), std=(0.5))(train_dataset.data[:10000].float())#.reshape((-1,28*28))[:10000]
+        #for k in range(len(X)):
+        #    torchvision.utils.save_image(X[k:k+1], os.path.join('original', f'{k}.png')) 
         y = train_dataset.targets[:10000]
         confidence = np.ones(len(y))
-
-    if args.data == 'fake' : 
-        X = load_bw_images("samples")
+    else : 
+        X = load_bw_images(args.data)
         print(X.shape)
         y,confidence = labelize(X)
 
     if args.encoding == "image": 
-        tsne_pipeline(X,y, f"MNIST {args.data} Dataset -  VGG 5 (fine-tuned) Space",confidence)
+        new_X = X.flatten(start_dim=1)
+        tsne_pipeline(new_X,y, f"MNIST {args.data} Dataset -  Image Space",confidence)
 
     if args.encoding == "vgg5": 
         new_X = vgg5_encoding(X)

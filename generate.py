@@ -25,9 +25,9 @@ if __name__ == '__main__':
 
     G = Generator(g_output_dim = mnist_dim).to(device)
     G.device = device
-    G = load_model(G, 'checkpoints', mode = 'G')
+    G = load_model(G, 'checkpoints_Spectral', mode = 'G')
     D = Discriminator(mnist_dim).to(device)
-    D = load_model(D, 'checkpoints', mode = 'D')
+    D = load_model(D, 'checkpoints_Spectral', mode = 'D')
     D.device = device
 
     if device == 'cuda':
@@ -42,7 +42,21 @@ if __name__ == '__main__':
     print('Start Generating')
     os.makedirs('samples', exist_ok=True)
 
+
+    print('Start Generating')
+    os.makedirs('samples_no_OT', exist_ok=True)
+    n_samples = 0
+    with torch.no_grad():
+        while n_samples<10000:
+            z = torch.randn(args.batch_size, 100).to(device)
+            x = G(z)
+            x = x.reshape(args.batch_size, 28, 28)
+            for k in range(x.shape[0]):
+                if n_samples<10000:
+                    torchvision.utils.save_image(x[k:k+1], os.path.join('samples_no_OT', f'{n_samples}.png'))         
+                    n_samples += 1
+
     n_samples = args.n_samples
-    img = make_image(G = G, D= D, batchsize = n_samples, N_update=100, ot=True, mode='dot', k=1, lr=0.05, optmode='sgd')
+    img = make_image(G = G, D= D, batchsize = n_samples, N_update=100, ot=True, mode='dot', k=1, lr=0.005, optmode='sgd')
     for k in range(n_samples):
         torchvision.utils.save_image(img[k, :, :], os.path.join('samples', f'{k}.png'))

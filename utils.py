@@ -56,6 +56,66 @@ def G_train(x, G, D, G_optimizer, criterion):
     return G_loss.data.item()
 
 
+def DW_train(x, G, D, D_optimizer, weight_clip=0.01,n_critic=5):
+    """Train the critic (discriminator) using Wasserstein loss"""
+    #=======================Train the critic=======================#
+    for i in range(n_critic):
+        D.zero_grad()
+        
+        # Train critic on real
+        x_real = x.to(device)
+        D_real = D(x_real)
+        D_real_loss = -torch.mean(D_real)  # Want to maximize D(real)
+        
+        # Train critic on fake
+        z = torch.randn(x.shape[0], 100).to(device)
+        x_fake = G(z).detach()  # Detach to avoid computing gradients for generator
+        D_fake = D(x_fake)
+        D_fake_loss = torch.mean(D_fake)  # Want to minimize D(fake)
+        
+        # Combined loss (negative since we're minimizing)
+        D_loss = D_fake_loss + D_real_loss
+        
+        # Gradient backprop & optimize ONLY D's parameters
+        D_loss.backward()
+        D_optimizer.step()
+        
+        # Weight clipping (essential for WGAN)
+        for p in D.parameters():
+            p.data.clamp_(-weight_clip, weight_clip)
+    
+    # Calculate Wasserstein estimate
+    with torch.no_grad():
+        Wasserstein_D = -D_real_loss - D_fake_loss
+        # For compatibility with original metrics
+        D_accuracy_on_real = (D_real > 0).float().mean()
+        D_accuracy_on_fake = (D_fake < 0).float().mean()
+    
+    return (D_loss.item(), 
+            -D_real_loss.item(), 
+            D_fake_loss.item(),
+            D_accuracy_on_real,
+            D_accuracy_on_fake)
+
+
+def GW_train(x, G, D, G_optimizer):
+    """Train the generator using Wasserstein loss"""
+    #=======================Train the generator=======================#
+    G.zero_grad()
+    
+    z = torch.randn(x.shape[0], 100).to(device)
+    fake_images = G(z)
+    D_output = D(fake_images)
+    
+    # Generator wants to maximize D(G(z))
+    G_loss = -torch.mean(D_output)
+    
+    # Gradient backprop & optimize ONLY G's parameters
+    G_loss.backward()
+    G_optimizer.step()
+    
+    return G_loss.item()
+
 
 def save_models(G, D, folder):
     torch.save(G.state_dict(), os.path.join(folder,'G.pth'))

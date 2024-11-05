@@ -27,23 +27,30 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
+import model_vgg.vgg_5 as model_vgg
+
+
 Manifold = namedtuple('Manifold', ['features', 'radii'])
 PrecisionAndRecall = namedtuple('PrecisinoAndRecall', ['precision', 'recall'])
 
 
 class IPR():
-    def __init__(self,device, batch_size=50, k=3, num_samples=10000, model=None):
+    def __init__(self,device, batch_size=50, k=3, num_samples=10000, model=None,encoding = 'vgg16'):
         self.manifold_ref = None
         self.batch_size = batch_size
         self.k = k
         self.num_samples = num_samples
         self.device = device
-        if model is None:
+        self.encoding = encoding
+        if self.encoding == 'vgg16':
             print('loading vgg16 for improved precision and recall...', end='', flush=True)
             self.vgg16 = models.vgg16(pretrained=True).to(self.device).eval()
             print('done')
-        else:
-            self.vgg16 = model
+        elif self.encoding == 'vgg5':
+            print('loading vgg5 for improved precision and recall...', end='', flush=True)
+            self.vgg5 = model_vgg.VGG().to(device).eval()
+            self.vgg5.load_state_dict(torch.load("model_vgg/VGG_fine_tuned.pth"))
+            print('done')
 
     def __call__(self, subject):
         return self.precision_and_recall(subject)
@@ -123,6 +130,7 @@ class IPR():
         return Manifold(feats, radii)
 
     def extract_features(self, images):
+
         """
         Extract features of vgg16-fc2 for all images
         params:
@@ -160,19 +168,38 @@ class IPR():
         returns:
             A numpy array of dimension (num images, dims)
         """
+        if self.encoding == 'vgg16' :
+            dataloader = get_custom_loader(path_or_fnames, batch_size=self.batch_size, num_samples=self.num_samples)
+            num_found_images = len(dataloader.dataset)
+            desc = 'extracting features of %d images' % num_found_images
+            if num_found_images < self.num_samples:
+                print('WARNING: num_found_images(%d) < num_samples(%d)' % (num_found_images, self.num_samples))
 
-        dataloader = get_custom_loader(path_or_fnames, batch_size=self.batch_size, num_samples=self.num_samples)
-        num_found_images = len(dataloader.dataset)
-        desc = 'extracting features of %d images' % num_found_images
-        if num_found_images < self.num_samples:
-            print('WARNING: num_found_images(%d) < num_samples(%d)' % (num_found_images, self.num_samples))
+            features = []
+            for batch in tqdm(dataloader, desc=desc):
+                before_fc = self.vgg16.features(batch.to(self.device))
+                before_fc = before_fc.view(-1, 7 * 7 * 512)
+                feature = self.vgg16.classifier[:4](before_fc)
+                features.append(feature.cpu().data.numpy())
+        else :
+            dataloader = get_custom_loader_MNIST(path_or_fnames, batch_size=self.batch_size, num_samples=self.num_samples)
+            num_found_images = len(dataloader.dataset)
+            desc = 'extracting features of %d images' % num_found_images
+            if num_found_images < self.num_samples:
+                print('WARNING: num_found_images(%d) < num_samples(%d)' % (num_found_images, self.num_samples))
+            features = []
+            if self.encoding == 'vgg5':
+                for batch in tqdm(dataloader, desc=desc):
+                    before_fc = self.vgg5.features(batch.to(self.device))
+                    #before_fc = before_fc.view(-1, 7 * 7 * 512)
+                    feature = self.vgg5.classifier[:4](before_fc)
+                    features.append(feature.cpu().data.numpy())
 
-        features = []
-        for batch in tqdm(dataloader, desc=desc):
-            before_fc = self.vgg16.features(batch.to(self.device))
-            before_fc = before_fc.view(-1, 7 * 7 * 512)
-            feature = self.vgg16.classifier[:4](before_fc)
-            features.append(feature.cpu().data.numpy())
+            elif self.encoding == 'image' : 
+                for batch in tqdm(dataloader, desc=desc):
+                    feature = batch.flatten(start_dim=1)
+                    features.append(feature.cpu().data.numpy())
+
 
         return np.concatenate(features, axis=0)
 
@@ -283,6 +310,24 @@ class ImageFolder(Dataset):
     def __len__(self):
         return len(self.fnames)
 
+class ImageFolderMNIST(Dataset):
+    def __init__(self, root, transform=None):
+        # self.fnames = list(map(lambda x: os.path.join(root, x), os.listdir(root)))
+        self.fnames = glob(os.path.join(root, '**', '*.jpg'), recursive=True) + \
+            glob(os.path.join(root, '**', '*.png'), recursive=True)
+
+        self.transform = transform
+
+    def __getitem__(self, index):
+        image_path = self.fnames[index]
+        image = Image.open(image_path).convert('L')
+        if self.transform is not None:
+            image = self.transform(image)
+        return image
+
+    def __len__(self):
+        return len(self.fnames)
+
 
 class FileNames(Dataset):
     def __init__(self, fnames, transform=None):
@@ -292,6 +337,21 @@ class FileNames(Dataset):
     def __getitem__(self, index):
         image_path = self.fnames[index]
         image = Image.open(image_path).convert('RGB')
+        if self.transform is not None:
+            image = self.transform(image)
+        return image
+
+    def __len__(self):
+        return len(self.fnames)
+
+class FileNamesMNIST(Dataset):
+    def __init__(self, fnames, transform=None):
+        self.fnames = fnames
+        self.transform = transform
+
+    def __getitem__(self, index):
+        image_path = self.fnames[index]
+        image = Image.open(image_path).convert('L')
         if self.transform is not None:
             image = self.transform(image)
         return image
@@ -312,6 +372,28 @@ def get_custom_loader(image_dir_or_fnames, image_size=224, batch_size=50, num_wo
         dataset = FileNames(image_dir_or_fnames, transform)
     elif isinstance(image_dir_or_fnames, str):
         dataset = ImageFolder(image_dir_or_fnames, transform=transform)
+    else:
+        raise TypeError
+
+    if num_samples > 0:
+        dataset.fnames = dataset.fnames[:num_samples]
+    data_loader = DataLoader(dataset=dataset,
+                             batch_size=batch_size,
+                             shuffle=False,
+                             num_workers=num_workers,
+                             pin_memory=True)
+    return data_loader
+
+def get_custom_loader_MNIST(image_dir_or_fnames, image_size=28, batch_size=50, num_workers=4, num_samples=-1):
+    
+    transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.5), std=(0.5))])
+
+    if isinstance(image_dir_or_fnames, list):
+        dataset = FileNamesMNIST(image_dir_or_fnames, transform)
+    elif isinstance(image_dir_or_fnames, str):
+        dataset = ImageFolderMNIST(image_dir_or_fnames, transform=transform)
     else:
         raise TypeError
 
@@ -371,7 +453,7 @@ if __name__ == '__main__':
 
     # Example usage: with real and fake paths
     # python improved_precision_recall.py [path_real] [path_fake]
-    ipr = IPR(args.batch_size, args.k, args.num_samples)
+    ipr = IPR("cuda",args.batch_size, args.k, args.num_samples)
     with torch.no_grad():
         # real
         ipr.compute_manifold_ref(args.path_real)

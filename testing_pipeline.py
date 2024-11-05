@@ -8,10 +8,11 @@ from utils import load_model
 from torchvision import datasets, transforms
 
 class TestingPipeline:
-    def __init__(self, model, device):
+    def __init__(self, model, device,embedding='vgg16'):
         self.model = model
         self.path_real = 'samples/real_samples'
         self.device = device
+        self.embedding = embedding
 
     def compute_metrics(self, batch_size):
         self.model = torch.nn.DataParallel(self.model).to(self.device)
@@ -29,13 +30,13 @@ class TestingPipeline:
                                                 batch_size=args.batch_size, shuffle=True)
             compt = 0
             for images, _ in train_loader:
-                if compt>= 79 * batch_size:
+                if compt>= 320 * batch_size:
                         break
                 else:
                     for i in range(images.shape[0]):
                         torchvision.utils.save_image(images[i:i+1], os.path.join(self.path_real, f'{compt}.png'))
                         compt += 1
-                        if compt>= 79*batch_size:
+                        if compt>= 320*batch_size:
                             break
 
 
@@ -50,7 +51,7 @@ class TestingPipeline:
                 print('Fake samples directory already exist')
             images = torch.zeros((150, batch_size, 28, 28))
             compt = 0
-            while compt < 79 * batch_size:
+            while compt < 320 * batch_size:
                 z = torch.randn(batch_size, 100).to(self.device)
                 x = self.model(z)
                 x = x.reshape(batch_size, 28, 28)
@@ -61,7 +62,7 @@ class TestingPipeline:
 
         print('Finish Generating')
         print('Start Computing Metrics')
-        ipr = IPR(device = self.device, k = 5, batch_size= batch_size, num_samples = 5000)
+        ipr = IPR(device = self.device, k = 2, batch_size= batch_size, num_samples = 10000,encoding=self.embedding)
         ipr.compute_manifold_ref(self.path_real)
         images = images.reshape(-1, 28, 28).unsqueeze(1).repeat(1, 3, 1, 1)
         print(images.shape)
@@ -81,5 +82,5 @@ if __name__ == '__main__':
     if args.model_type == 'vanilla_gan':
         model = Generator(g_output_dim= args.mnist_dim)
     model = load_model(model, args.model_path)
-    pipeline = TestingPipeline(model, device)
+    pipeline = TestingPipeline(model, device,'image')
     pipeline.compute_metrics(args.batch_size)

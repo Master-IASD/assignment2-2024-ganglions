@@ -11,7 +11,7 @@ import datetime
 from torch.utils.tensorboard import SummaryWriter
 
 from model import Generator, Discriminator
-from utils import D_train, G_train, save_models, generate_fake_samples, save_real_samples
+from utils import D_train, G_train, save_models, generate_fake_samples, save_real_samples,DW_train, GW_train
 from pytorch_fid.fid_score import calculate_fid_given_paths
 
 from variables import *
@@ -23,9 +23,9 @@ print("run this for logs : tensorboard --logdir",log_dir)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train Normalizing Flow.')
-    parser.add_argument("--epochs", type=int, default=100,
+    parser.add_argument("--epochs", type=int, default=200,
                         help="Number of epochs for training.")
-    parser.add_argument("--lr", type=float, default=0.0002,
+    parser.add_argument("--lr", type=float, default=5e-5,
                       help="The learning rate to use for training.")
     parser.add_argument("--batch_size", type=int, default=64,
                         help="Size of mini-batches for SGD")
@@ -33,6 +33,7 @@ if __name__ == '__main__':
     parser.add_argument("--save_metrics", type=bool, default=False)
     parser.add_argument("--early_stop", type=bool, default=False)
     parser.add_argument("--track_fid", type=bool, default=False)
+    parser.add_argument("--WGAN", type=bool, default=True)
 
     args = parser.parse_args()
 
@@ -67,10 +68,10 @@ if __name__ == '__main__':
 
     if device == 'cuda':
         G = torch.nn.DataParallel(Generator(g_output_dim = mnist_dim).to(device)).to(device)
-        D = torch.nn.DataParallel(Discriminator(mnist_dim).to(device)).to(device)
+        D = torch.nn.DataParallel(Discriminator(mnist_dim,WGAN=args.WGAN).to(device)).to(device)
     else :
         G = Generator(g_output_dim = mnist_dim).to(device)
-        D = Discriminator(mnist_dim).to(device)
+        D = Discriminator(mnist_dim,WGAN=args.WGAN).to(device)
 
     # model = DataParallel(model).to(device)
     print('Model loaded.')
@@ -82,6 +83,10 @@ if __name__ == '__main__':
     criterion = nn.BCELoss()
 
     # define optimizers
+    #if args.WGAN :
+    #    G_optimizer = optim.RMSprop(G.parameters(), lr = 3*args.lr)
+    #    D_optimizer = optim.RMSprop(D.parameters(), lr = args.lr)
+    #else :
     G_optimizer = optim.Adam(G.parameters(), lr = args.lr)
     D_optimizer = optim.Adam(D.parameters(), lr = args.lr)
 
@@ -99,15 +104,20 @@ if __name__ == '__main__':
         d_acc_fake = 0
         for batch_idx, (x, _) in enumerate(train_loader):
             x = x.view(-1, mnist_dim)
-
-            d_loss_batch, d_rea_loss_batch, d_fake_loss_batch,d_acc_real_batch,d_acc_fake_batch = D_train(x, G, D, D_optimizer, criterion)
+            if args.WGAN :
+                d_loss_batch, d_rea_loss_batch, d_fake_loss_batch,d_acc_real_batch,d_acc_fake_batch = DW_train(x, G, D, D_optimizer,n_critic=7)
+            else :
+                d_loss_batch, d_rea_loss_batch, d_fake_loss_batch,d_acc_real_batch,d_acc_fake_batch = D_train(x, G, D, D_optimizer, criterion)
             d_loss += d_loss_batch
             d_real_loss += d_rea_loss_batch
             d_fake_loss += d_fake_loss_batch
             d_acc_real += d_acc_real_batch
             d_acc_fake += d_acc_fake_batch
 
-            g_loss += G_train(x, G, D, G_optimizer, criterion)
+            if args.WGAN :
+                g_loss += GW_train(x, G, D, G_optimizer)
+            else:
+                g_loss += G_train(x, G, D, G_optimizer, criterion)
 
         writer.add_scalars("train/Dloss",{
             "D_loss_total" : d_loss / batch_idx,
@@ -121,7 +131,7 @@ if __name__ == '__main__':
             },epoch)
 
         writer.add_scalar("train/Gloss",g_loss / batch_idx,epoch)
-        if (epoch % 50 == 0) and (epoch > 0):
+        if (epoch % 10 == 0) and (epoch > 0):
             with torch.no_grad() :
                 if args.track_fid :
                     generate_fake_samples(args, G, args.n_samples, device)
