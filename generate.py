@@ -25,9 +25,9 @@ if __name__ == '__main__':
 
     G = Generator(g_output_dim = mnist_dim).to(device)
     G.device = device
-    G = load_model(G, 'checkpoints_Spectral', mode = 'G')
+    G = load_model(G, 'checkpoints', mode = 'G')
     D = Discriminator(mnist_dim).to(device)
-    D = load_model(D, 'checkpoints_Spectral', mode = 'D')
+    D = load_model(D, 'checkpoints', mode = 'D')
     D.device = device
 
     if device == 'cuda':

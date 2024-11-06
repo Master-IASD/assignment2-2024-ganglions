@@ -14,6 +14,7 @@ class TestingPipeline:
     def __init__(self, model, device,embedding='vgg16'):
         self.model = model
         self.path_real = 'samples/real_samples'
+        self.path_fake = 'samples/fake_samples'
         self.device = device
         self.embedding = embedding
 
@@ -60,7 +61,7 @@ class TestingPipeline:
                 x = x.reshape(batch_size, 28, 28)
                 images[n_samples, :, :, :] = x
                 for k in range(x.shape[0]):
-                        torchvision.utils.save_image(x[k:k+1], os.path.join(self.path_real + '/../fake_samples', f'{compt}.png'))
+                        torchvision.utils.save_image(x[k:k+1], os.path.join(self.path_fake, f'{compt}.png'))
                         compt += 1
 
         print('Finish Generating')
